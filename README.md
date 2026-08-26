@@ -41,20 +41,50 @@ A glove (a set of cursors) is a directory in `gloves/`:
 
 ```
 gloves/myglove/
-  arrow.png        # required per slot you want: 1x image (32×32 is typical)
+  arrow.png        # art for one slot: 1x image (32×32 is typical)
   arrow@2x.png     # optional retina rep (double pixels)
   pointing.png
+  default.png      # optional: fallback for every slot with no PNG of its own
+  skip             # optional: slot names to leave stock, one per line
   hotspots.json    # optional: {"arrow": {"x": 4, "y": 2}} in 1x pixel coords
 ```
 
 Slot names come from `./gauntlet list` (arrow, ibeam, pointing, link,
-forbidden, copydrag, …). Only the slots you provide are replaced; everything
-else stays stock. Then `./gauntlet use myglove`. Swapping between gloves is one
-command; each `use` starts from the stock set, so gloves never bleed into each
-other.
+forbidden, copydrag, …) — **[CURSORS.md](CURSORS.md) documents every slot**,
+what it looks like and what triggers it. Only the slots you provide are
+replaced; everything else stays stock. Then `./gauntlet use myglove`. Each
+`use` starts by restoring the stock set, so gloves never bleed into each other.
 
 Tip: leave `ibeam` alone unless your art is thin — text selection with a chunky
 cursor is misery.
+
+### One pointer for everything
+
+Drop a `default.png` in the glove. Any slot without its own art gets it, and
+gauntlet also sweeps the unnamed core cursors (`com.apple.cursor.0`–`44`) — so
+resize handles, cell crosshairs and the rest stop changing shape too.
+
+Use `skip` to carve out exceptions — two are worth keeping stock. Loading
+cursors are animated, and a spinner is genuine feedback that something is
+happening. Resize cursors exist to show *which direction* an edge will move,
+which one static pointer destroys; `@resize` covers all 20 of them in a line.
+
+```
+# gloves/myglove/skip
+@resize           # window edges, corners, pane splitters
+wait
+busy
+counting-down
+counting-updown
+cursor.7          # bare core cursors work too
+```
+
+The bundled `wow-solid` glove ships with exactly that skip file.
+
+**Limit:** this covers cursors macOS draws from its own registry. Apps that
+draw their own — browsers honouring CSS `cursor`, image and video editors,
+games, anything using a fully custom NSCursor image — bypass it entirely, and
+no tool of this kind can reach them.
 
 ## The WoW glove
 
@@ -102,6 +132,3 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.you.gauntlet.plist
   the failure mode is a cursor that ignores you until you log out.
 - The private cursor API signatures were originally reverse-engineered by
   Joe Ranieri and Alex Zielenski.
-- WoW cursor art © Blizzard Entertainment, packaged by
-  [NeticSoul/retail-cursor-pack](https://github.com/NeticSoul/retail-cursor-pack).
-  Not included in this repo; fetched locally for personal use.

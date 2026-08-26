@@ -1,0 +1,10 @@
+# Loading indicators stay stock — they're animated, and a spinner is real
+# feedback that something is happening.
+wait
+busy
+counting-down
+counting-updown
+
+# Resize and window-drag cursors stay stock — their whole job is showing
+# which direction something will move. See CURSORS.md for the group's members.
+@resize

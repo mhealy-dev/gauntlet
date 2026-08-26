@@ -13,9 +13,12 @@
 //    gauntlet reset         restore stock macOS cursors and clear the current glove
 //    gauntlet list          list supported cursor names
 //
-//  Cursor directory layout:
-//    <name>.png            required, 1x image (e.g. 32x32 px)
-//    <name>@2x.png         optional retina image (double pixels)
+//  Glove directory layout:
+//    <slot>.png            1x image for one cursor slot (e.g. 32x32 px)
+//    <slot>@2x.png         optional retina image (double pixels)
+//    default.png           optional fallback used for every slot without its
+//                          own PNG — this is how one pointer covers everything
+//    skip                  optional: slot names to leave stock, one per line
 //    hotspots.json         optional: {"arrow": {"x": 4, "y": 2}, ...}
 //                          hotspot is in 1x pixel coords, default 0,0
 //
@@ -68,6 +71,7 @@ typedef struct {
 static const CursorEntry kCursors[] = {
     {"arrow",     "com.apple.coregraphics.Arrow", "com.apple.coregraphics.ArrowS"}, // main pointer
     {"ibeam",     "com.apple.coregraphics.IBeam", "com.apple.coregraphics.IBeamS"}, // text
+    {"ibeamxor", "com.apple.coregraphics.IBeamXOR", NULL}, // inverted text (dark bgs)
     {"wait", "com.apple.coregraphics.Wait", NULL},     // spinner base
     {"ctxarrow", "com.apple.coregraphics.ArrowCtx", NULL}, // contextual-menu arrow
     {"alias", "com.apple.coregraphics.Alias", NULL},
@@ -75,7 +79,9 @@ static const CursorEntry kCursors[] = {
     {"move", "com.apple.coregraphics.Move", NULL},
     {"link", "com.apple.cursor.2", NULL},              // link hand
     {"forbidden", "com.apple.cursor.3", NULL},
-    {"busy", "com.apple.cursor.4", NULL},
+    {"busy", "com.apple.cursor.4", NULL},                  // loading
+    {"counting-down", "com.apple.cursor.15", NULL},        // loading
+    {"counting-updown", "com.apple.cursor.16", NULL},      // loading
     {"copydrag", "com.apple.cursor.5", NULL},
     {"crosshair", "com.apple.cursor.7", NULL},
     {"closed", "com.apple.cursor.11", NULL},             // closed hand (drag)
@@ -87,12 +93,21 @@ static const CursorEntry kCursors[] = {
     {NULL, NULL, NULL}
 };
 
-static const char *identifierForName(NSString *name) {
-    for (int i = 0; kCursors[i].name; i++)
-        if ([name isEqualToString:@(kCursors[i].name)])
-            return kCursors[i].identifier;
-    return NULL;
-}
+// Core cursors are com.apple.cursor.0 ... com.apple.cursor.kMaxCoreCursor.
+// The WindowServer registry is populated lazily (an identifier shows up only
+// once something registers or uses it), so a glove that wants to cover
+// *everything* has to register across the whole range up front.
+static const int kMaxCoreCursor = 44;
+
+// Resize and window-drag cursors: pane splitters (17-19, 21-23) and window
+// edges/corners (26-39). Their whole job is showing *which way* something will
+// move, so a single static pointer destroys real information — hence the
+// "@resize" group that a glove's skip file can name in one line.
+static const int kResizeCursors[] = {
+    17, 18, 19, 21, 22, 23, 26, 27, 28, 29,
+    30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+};
+static const int kResizeCursorCount = sizeof(kResizeCursors) / sizeof(kResizeCursors[0]);
 
 #pragma mark - Image loading
 
@@ -126,6 +141,78 @@ static BOOL registerCursor(const char *identifier, NSArray *images,
     return err == kCGErrorSuccess;
 }
 
+// Loads <dir>/<slot>.png plus optional <slot>@2x.png. Returns nil if absent.
+static NSArray *loadSlotImages(NSString *dir, NSString *slot) {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *png1x = [dir stringByAppendingPathComponent:
+                       [slot stringByAppendingString:@".png"]];
+    if (![fm fileExistsAtPath:png1x]) return nil;
+
+    CGImageRef img1x = createImageFromPNG(png1x);
+    if (!img1x) {
+        fprintf(stderr, "gauntlet: could not read %s\n", png1x.UTF8String);
+        return nil;
+    }
+    NSMutableArray *images = [NSMutableArray arrayWithObject:(__bridge id)img1x];
+    CGImageRelease(img1x); // array retains
+
+    NSString *png2x = [dir stringByAppendingPathComponent:
+                       [slot stringByAppendingString:@"@2x.png"]];
+    if ([fm fileExistsAtPath:png2x]) {
+        CGImageRef img2x = createImageFromPNG(png2x);
+        if (img2x) {
+            [images addObject:(__bridge id)img2x];
+            CGImageRelease(img2x);
+        }
+    }
+    return images;
+}
+
+// Optional <dir>/skip: one slot name per line ("wait", "busy"), a bare core
+// cursor ("cursor.15"), or the group "@resize". Listed slots are left stock —
+// even when the glove has a default.png that would otherwise cover them.
+// '#' starts a comment.
+static NSSet *loadSkipList(NSString *dir) {
+    NSString *text = [NSString stringWithContentsOfFile:
+                      [dir stringByAppendingPathComponent:@"skip"]
+                                               encoding:NSUTF8StringEncoding error:nil];
+    if (!text) return [NSSet set];
+
+    NSMutableSet *skip = [NSMutableSet set];
+    for (NSString *rawLine in [text componentsSeparatedByCharactersInSet:
+                               NSCharacterSet.newlineCharacterSet]) {
+        NSString *line = [rawLine stringByTrimmingCharactersInSet:
+                          NSCharacterSet.whitespaceCharacterSet];
+        NSRange comment = [line rangeOfString:@"#"];
+        if (comment.location != NSNotFound) line = [line substringToIndex:comment.location];
+        line = [line stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+        if (!line.length) continue;
+
+        if ([line isEqualToString:@"@resize"]) {
+            for (int i = 0; i < kResizeCursorCount; i++)
+                [skip addObject:[NSString stringWithFormat:@"cursor.%d", kResizeCursors[i]]];
+        } else if ([line hasPrefix:@"@"]) {
+            fprintf(stderr, "gauntlet: unknown skip group '%s' (only @resize)\n",
+                    line.UTF8String);
+        } else {
+            [skip addObject:line];
+        }
+    }
+    return skip;
+}
+
+// A named slot can be skipped by its slot name or by its core cursor number,
+// so "@resize" also covers named slots like resize-we (com.apple.cursor.19).
+static BOOL slotIsSkipped(NSSet *skip, NSString *name, const char *identifier) {
+    if ([skip containsObject:name]) return YES;
+    NSString *ident = @(identifier);
+    if ([ident hasPrefix:@"com.apple."])
+        return [skip containsObject:[ident substringFromIndex:10]]; // "cursor.19"
+    return NO;
+}
+
+static int resetCursors(BOOL announce); // defined below; applying starts clean
+
 static int applyDirectory(NSString *dir) {
     NSFileManager *fm = [NSFileManager defaultManager];
     BOOL isDir = NO;
@@ -133,6 +220,10 @@ static int applyDirectory(NSString *dir) {
         fprintf(stderr, "gauntlet: no such directory: %s\n", dir.UTF8String);
         return 1;
     }
+
+    // Start from the stock set so gloves never bleed into each other, and so a
+    // slot this glove doesn't cover (or explicitly skips) really is stock.
+    resetCursors(NO);
 
     // Optional hotspots.json: {"arrow": {"x": 4, "y": 2}, ...} in 1x pixels.
     NSDictionary *hotspots = @{};
@@ -145,47 +236,61 @@ static int applyDirectory(NSString *dir) {
                     jsonErr.localizedDescription.UTF8String);
     }
 
-    int applied = 0, failed = 0;
+    // Optional default.png: covers every slot the glove doesn't name explicitly,
+    // including core cursors with no friendly name. This is what makes a
+    // one-pointer-for-everything glove possible.
+    NSArray *defaultImages = loadSlotImages(dir, @"default");
+    CGSize defaultSize = CGSizeZero;
+    CGPoint defaultHotspot = CGPointZero;
+    if (defaultImages) {
+        CGImageRef base = (__bridge CGImageRef)defaultImages[0];
+        defaultSize = CGSizeMake(CGImageGetWidth(base), CGImageGetHeight(base));
+        NSDictionary *hs = hotspots[@"default"];
+        defaultHotspot = CGPointMake([hs[@"x"] doubleValue], [hs[@"y"] doubleValue]);
+    }
+
+    NSSet *skip = loadSkipList(dir);
+    NSMutableSet *handled = [NSMutableSet set];
+    int applied = 0, failed = 0, skipped = 0;
+
     for (int i = 0; kCursors[i].name; i++) {
         NSString *name = @(kCursors[i].name);
-        NSString *png1x = [dir stringByAppendingPathComponent:
-                           [name stringByAppendingString:@".png"]];
-        if (![fm fileExistsAtPath:png1x]) continue;
 
-        CGImageRef img1x = createImageFromPNG(png1x);
-        if (!img1x) {
-            fprintf(stderr, "gauntlet: could not read %s\n", png1x.UTF8String);
-            failed++;
+        if (slotIsSkipped(skip, name, kCursors[i].identifier)) {
+            // Leave stock, and keep the default.png sweep off it too.
+            [handled addObject:@(kCursors[i].identifier)];
+            if (kCursors[i].identifier2) [handled addObject:@(kCursors[i].identifier2)];
+            skipped++;
             continue;
         }
 
-        NSMutableArray *images = [NSMutableArray arrayWithObject:(__bridge id)img1x];
-        CGImageRelease(img1x); // array retains
+        NSArray *images = loadSlotImages(dir, name);
+        CGSize size;
+        CGPoint hotspot;
 
-        NSString *png2x = [dir stringByAppendingPathComponent:
-                           [name stringByAppendingString:@"@2x.png"]];
-        if ([fm fileExistsAtPath:png2x]) {
-            CGImageRef img2x = createImageFromPNG(png2x);
-            if (img2x) {
-                [images addObject:(__bridge id)img2x];
-                CGImageRelease(img2x);
-            }
+        if (images) {
+            CGImageRef base = (__bridge CGImageRef)images[0];
+            size = CGSizeMake(CGImageGetWidth(base), CGImageGetHeight(base));
+            NSDictionary *hs = hotspots[name];
+            hotspot = CGPointMake([hs[@"x"] doubleValue], [hs[@"y"] doubleValue]);
+        } else if (defaultImages) {
+            images = defaultImages;
+            size = defaultSize;
+            hotspot = defaultHotspot;
+        } else {
+            continue; // no art for this slot; leave it stock
         }
 
-        // Size in points == 1x pixel size.
-        CGImageRef base = (__bridge CGImageRef)images[0];
-        CGSize size = CGSizeMake(CGImageGetWidth(base), CGImageGetHeight(base));
-
-        NSDictionary *hs = hotspots[name];
-        CGPoint hotspot = CGPointMake([hs[@"x"] doubleValue], [hs[@"y"] doubleValue]);
-
         BOOL ok = registerCursor(kCursors[i].identifier, images, size, hotspot);
+        [handled addObject:@(kCursors[i].identifier)];
         // macOS 26 Tahoe renders the S-variant identifiers; register both.
-        if (kCursors[i].identifier2)
+        if (kCursors[i].identifier2) {
             ok = registerCursor(kCursors[i].identifier2, images, size, hotspot) && ok;
+            [handled addObject:@(kCursors[i].identifier2)];
+        }
 
         if (ok) {
-            printf("applied %-10s -> %s%s%s\n", name.UTF8String, kCursors[i].identifier,
+            printf("applied %-12s -> %s%s%s\n", name.UTF8String, kCursors[i].identifier,
                    kCursors[i].identifier2 ? " + " : "",
                    kCursors[i].identifier2 ?: "");
             applied++;
@@ -196,12 +301,32 @@ static int applyDirectory(NSString *dir) {
         }
     }
 
+    // Sweep the rest of the core cursor range with the default image.
+    if (defaultImages) {
+        int swept = 0;
+        for (int n = 0; n <= kMaxCoreCursor; n++) {
+            NSString *ident = [NSString stringWithFormat:@"com.apple.cursor.%d", n];
+            if ([handled containsObject:ident]) continue;
+            if ([skip containsObject:[NSString stringWithFormat:@"cursor.%d", n]]) {
+                skipped++;
+                continue;
+            }
+            if (registerCursor(ident.UTF8String, defaultImages, defaultSize, defaultHotspot))
+                swept++;
+        }
+        if (swept) printf("applied default      -> %d further core cursor(s)\n", swept);
+        applied += swept;
+    }
+
     if (applied == 0 && failed == 0) {
         fprintf(stderr, "gauntlet: no matching .png files in %s (see `gauntlet list`)\n",
                 dir.UTF8String);
         return 1;
     }
-    printf("%d cursor(s) applied, %d failed\n", applied, failed);
+    printf("%d cursor(s) applied", applied);
+    if (skipped) printf(", %d left stock", skipped);
+    if (failed)  printf(", %d failed", failed);
+    printf("\n");
     return failed ? 1 : 0;
 }
 
@@ -220,7 +345,7 @@ static void restoreFromNSCursor(const char *identifier, NSCursor *cursor) {
     registerCursor(identifier, images, image.size, cursor.hotSpot);
 }
 
-static int resetCursors(void) {
+static int resetCursors(BOOL announce) {
     CGSConnectionID cid = CGSMainConnectionID();
 
     // Re-register stock images over anything we replaced globally
@@ -233,7 +358,7 @@ static int resetCursors(void) {
     // Drop all com.apple.cursor.N registrations and reload defaults.
     if (CoreCursorUnregisterAll(cid) == kCGErrorSuccess) {
         for (int x = 0; x < 45; x++) CoreCursorSet(cid, x);
-        printf("cursors restored (a logout fully resets everything)\n");
+        if (announce) printf("cursors restored (a logout fully resets everything)\n");
         return 0;
     }
     fprintf(stderr, "gauntlet: CoreCursorUnregisterAll failed — log out and back in to reset\n");
@@ -326,7 +451,7 @@ int main(int argc, const char *argv[]) {
         }
         if ([cmd isEqualToString:@"reset"]) {
             [[NSFileManager defaultManager] removeItemAtPath:currentLinkPath() error:nil];
-            return resetCursors();
+            return resetCursors(YES);
         }
         if ([cmd isEqualToString:@"list"]) {
             for (int i = 0; kCursors[i].name; i++)
