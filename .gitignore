@@ -1,0 +1,12 @@
+# compiled binary
+/gauntlet
+
+# current-cape selection (machine state)
+capes/.current
+
+# Blizzard art — not redistributable (rebuild with scripts/make-wow-cape.sh)
+capes/wow/
+
+# python scratch
+venv/
+__pycache__/
