@@ -1,6 +1,6 @@
-"""Build capes/wow from decoded retail cursor PNGs.
+"""Build gloves/wow from decoded retail cursor PNGs.
 
-usage: build_wow_cape.py <png_dir> <cape_dir>
+usage: build_wow_cape.py <png_dir> <glove_dir>
 """
 import json, os, sys
 from PIL import Image
@@ -17,16 +17,16 @@ MAPPING = {
     'open':      'Pickup',
 }
 
-def main(png_dir, cape_dir):
-    os.makedirs(cape_dir, exist_ok=True)
+def main(png_dir, glove_dir):
+    os.makedirs(glove_dir, exist_ok=True)
     for slot, src in MAPPING.items():
         im = Image.open(os.path.join(png_dir, src + '.png'))
-        im.save(os.path.join(cape_dir, slot + '.png'))
+        im.save(os.path.join(glove_dir, slot + '.png'))
         im.resize((im.width * 2, im.height * 2), Image.LANCZOS).save(
-            os.path.join(cape_dir, slot + '@2x.png'))
-    with open(os.path.join(cape_dir, 'hotspots.json'), 'w') as f:
+            os.path.join(glove_dir, slot + '@2x.png'))
+    with open(os.path.join(glove_dir, 'hotspots.json'), 'w') as f:
         json.dump({slot: {'x': 0, 'y': 0} for slot in MAPPING}, f)
-    print('built', cape_dir, 'with', len(MAPPING), 'slots')
+    print('built', glove_dir, 'with', len(MAPPING), 'slots')
 
 if __name__ == '__main__':
     main(sys.argv[1], sys.argv[2])

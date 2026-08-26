@@ -1,11 +1,11 @@
 # compiled binary
 /gauntlet
 
-# current-cape selection (machine state)
-capes/.current
+# current-glove selection (machine state)
+gloves/.current
 
-# Blizzard art — not redistributable (rebuild with scripts/make-wow-cape.sh)
-capes/wow/
+# Blizzard art — not redistributable (rebuild with scripts/make-wow-glove.sh)
+gloves/wow/
 
 # python scratch
 venv/

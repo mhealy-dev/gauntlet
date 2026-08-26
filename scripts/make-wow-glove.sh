@@ -1,5 +1,5 @@
 #!/bin/sh
-# Rebuilds capes/wow from NeticSoul/retail-cursor-pack (Blizzard's retail
+# Rebuilds gloves/wow from NeticSoul/retail-cursor-pack (Blizzard's retail
 # cursor art, not redistributable — hence built locally instead of committed).
 set -eu
 
@@ -21,7 +21,7 @@ echo "==> extracting BLPs"
 echo "==> decoding BLP2 -> PNG"
 "$WORK/venv/bin/python" "$ROOT/scripts/blp2png.py" "$WORK/blp" "$WORK/png"
 
-echo "==> building cape"
-"$WORK/venv/bin/python" "$ROOT/scripts/build_wow_cape.py" "$WORK/png" "$ROOT/capes/wow"
+echo "==> building glove"
+"$WORK/venv/bin/python" "$ROOT/scripts/build_wow_glove.py" "$WORK/png" "$ROOT/gloves/wow"
 
 echo "==> done: apply with \`$ROOT/gauntlet use wow\`"

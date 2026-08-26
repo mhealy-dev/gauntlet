@@ -1,17 +1,16 @@
 //
 //  gauntlet.m — minimal system-wide cursor replacer for macOS
 //
-//  A ~300-line distillation of Mousecape's mousecloak (alexzielenski/Mousecape).
 //  Registers replacement images for system cursor identifiers via private
 //  CoreGraphics/SkyLight APIs. Registrations live in the WindowServer session:
 //  they do not survive logout, so worst case is always fixed by logging out.
 //
 //  Usage:
-//    gauntlet use <name>    apply cape <repo>/capes/<name> and make it current
-//    gauntlet use           re-apply the current cape (used by the LaunchAgent)
-//    gauntlet capes         list installed capes, marking the current one
+//    gauntlet use <name>    apply <repo>/gloves/<name> and make it current
+//    gauntlet use           re-apply the current glove (used by the LaunchAgent)
+//    gauntlet gloves        list installed gloves, marking the current one
 //    gauntlet apply <dir>   apply cursors from an arbitrary directory
-//    gauntlet reset         restore stock macOS cursors and clear the current cape
+//    gauntlet reset         restore stock macOS cursors and clear the current glove
 //    gauntlet list          list supported cursor names
 //
 //  Cursor directory layout:
@@ -29,7 +28,9 @@
 @import ApplicationServices;
 #include <mach-o/dyld.h>
 
-#pragma mark - Private API declarations (from Mousecape's CGSInternal headers)
+#pragma mark - Private API declarations
+//  These CoreGraphics/SkyLight cursor APIs are undocumented; the signatures
+//  below were originally reverse-engineered by Joe Ranieri and Alex Zielenski.
 
 typedef int CGSConnectionID;
 typedef int CGSCursorID;
@@ -62,8 +63,8 @@ typedef struct {
     const char *identifier2; // Tahoe S-variant (macOS 26 renders these), or NULL
 } CursorEntry;
 
-// Friendly-name → identifier map (identifiers from Mousecape's MCDefs.m;
-// S-variants discovered in the macOS 26 dyld shared cache).
+// Friendly-name → WindowServer identifier map. S-variants discovered by
+// dumping cursor identifier strings from the macOS 26 dyld shared cache.
 static const CursorEntry kCursors[] = {
     {"arrow",     "com.apple.coregraphics.Arrow", "com.apple.coregraphics.ArrowS"}, // main pointer
     {"ibeam",     "com.apple.coregraphics.IBeam", "com.apple.coregraphics.IBeamS"}, // text
@@ -239,46 +240,46 @@ static int resetCursors(void) {
     return 1;
 }
 
-#pragma mark - Cape management
+#pragma mark - Glove management
 
-// The capes/ directory lives beside the real (symlink-resolved) executable.
-static NSString *capesDirectory(void) {
+// The gloves/ directory lives beside the real (symlink-resolved) executable.
+static NSString *glovesDirectory(void) {
     uint32_t size = 0;
     _NSGetExecutablePath(NULL, &size);
     char *buf = malloc(size);
     _NSGetExecutablePath(buf, &size);
     NSString *exe = [@(buf) stringByResolvingSymlinksInPath];
     free(buf);
-    return [exe.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"capes"];
+    return [exe.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"gloves"];
 }
 
 static NSString *currentLinkPath(void) {
-    return [capesDirectory() stringByAppendingPathComponent:@".current"];
+    return [glovesDirectory() stringByAppendingPathComponent:@".current"];
 }
 
-// Name of the currently selected cape, or nil.
-static NSString *currentCapeName(void) {
+// Name of the currently selected glove, or nil.
+static NSString *currentGloveName(void) {
     NSString *target = [[NSFileManager defaultManager]
                         destinationOfSymbolicLinkAtPath:currentLinkPath() error:nil];
     return target.lastPathComponent;
 }
 
-static int useCape(NSString *name) {
+static int useGlove(NSString *name) {
     NSFileManager *fm = [NSFileManager defaultManager];
 
-    if (!name) { // re-apply current (login agent path); no cape selected is fine
-        name = currentCapeName();
+    if (!name) { // re-apply current (login agent path); no glove selected is fine
+        name = currentGloveName();
         if (!name) {
-            printf("no cape selected\n");
+            printf("no glove selected\n");
             return 0;
         }
     }
 
-    NSString *dir = [capesDirectory() stringByAppendingPathComponent:name];
+    NSString *dir = [glovesDirectory() stringByAppendingPathComponent:name];
     BOOL isDir = NO;
     if (![fm fileExistsAtPath:dir isDirectory:&isDir] || !isDir) {
-        fprintf(stderr, "gauntlet: no cape named '%s' in %s (see `gauntlet capes`)\n",
-                name.UTF8String, capesDirectory().UTF8String);
+        fprintf(stderr, "gauntlet: no glove named '%s' in %s (see `gauntlet gloves`)\n",
+                name.UTF8String, glovesDirectory().UTF8String);
         return 1;
     }
 
@@ -290,21 +291,21 @@ static int useCape(NSString *name) {
     return result;
 }
 
-static int listCapes(void) {
-    NSString *capes = capesDirectory();
-    NSString *current = currentCapeName();
-    NSArray *entries = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:capes error:nil];
+static int listGloves(void) {
+    NSString *gloves = glovesDirectory();
+    NSString *current = currentGloveName();
+    NSArray *entries = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:gloves error:nil];
     int shown = 0;
     for (NSString *entry in [entries sortedArrayUsingSelector:@selector(compare:)]) {
         if ([entry hasPrefix:@"."]) continue;
         BOOL isDir = NO;
-        [[NSFileManager defaultManager] fileExistsAtPath:[capes stringByAppendingPathComponent:entry]
+        [[NSFileManager defaultManager] fileExistsAtPath:[gloves stringByAppendingPathComponent:entry]
                                              isDirectory:&isDir];
         if (!isDir) continue;
         printf("%s %s\n", [entry isEqualToString:current] ? "*" : " ", entry.UTF8String);
         shown++;
     }
-    if (!shown) printf("no capes installed in %s\n", capes.UTF8String);
+    if (!shown) printf("no gloves installed in %s\n", gloves.UTF8String);
     return 0;
 }
 
@@ -315,10 +316,10 @@ int main(int argc, const char *argv[]) {
         NSString *cmd = argc > 1 ? @(argv[1]) : @"";
 
         if ([cmd isEqualToString:@"use"]) {
-            return useCape(argc > 2 ? @(argv[2]) : nil);
+            return useGlove(argc > 2 ? @(argv[2]) : nil);
         }
-        if ([cmd isEqualToString:@"capes"]) {
-            return listCapes();
+        if ([cmd isEqualToString:@"gloves"]) {
+            return listGloves();
         }
         if ([cmd isEqualToString:@"apply"] && argc > 2) {
             return applyDirectory([@(argv[2]) stringByStandardizingPath]);
@@ -336,12 +337,12 @@ int main(int argc, const char *argv[]) {
         fprintf(stderr,
                 "gauntlet — system-wide cursor replacer\n"
                 "usage:\n"
-                "  gauntlet use <name>    apply cape capes/<name> and make it current\n"
-                "  gauntlet use           re-apply the current cape\n"
-                "  gauntlet capes         list installed capes (* = current)\n"
+                "  gauntlet use <name>    apply gloves/<name> and make it current\n"
+                "  gauntlet use           re-apply the current glove\n"
+                "  gauntlet gloves        list installed gloves (* = current)\n"
                 "  gauntlet apply <dir>   apply <name>.png (+ optional <name>@2x.png,\n"
                 "                         hotspots.json) from any directory\n"
-                "  gauntlet reset         restore stock cursors, clear current cape\n"
+                "  gauntlet reset         restore stock cursors, clear current glove\n"
                 "  gauntlet list          list supported cursor names\n");
         return argc <= 1 ? 0 : 1;
     }

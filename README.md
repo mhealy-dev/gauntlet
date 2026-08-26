@@ -1,23 +1,25 @@
 # gauntlet
 
-Tiny system-wide custom cursor tool for macOS — **works on macOS 26 Tahoe**,
-where [Mousecape](https://github.com/alexzielenski/Mousecape)'s 2020 release
-silently fails. One ~350-line Objective-C file, no GUI, no helper daemon,
-compiles with Command Line Tools alone.
+Tiny system-wide custom cursor tool for macOS, including **macOS 26 Tahoe**.
+One ~350-line Objective-C file — no GUI, no privileged helper, no daemon.
+Compiles with Command Line Tools alone.
 
 Named for its original mission: a World of Warcraft gauntlet pointer.
 
-## Why Tahoe breaks other tools
+## How it works
 
-Cursor replacement works by registering images against WindowServer cursor
-identifiers via private CoreGraphics APIs (`CGSRegisterCursorWithImages`).
-macOS 26 renders new **"S-variant" identifiers** (`com.apple.coregraphics.ArrowS`,
-`IBeamS` — visible in the dyld shared cache strings). Tools that register only
-the legacy names get a success return code and no visible change. gauntlet
+macOS draws cursors from images registered against WindowServer cursor
+identifiers. gauntlet registers your own images against those identifiers via
+private CoreGraphics APIs (`CGSRegisterCursorWithImages`).
+
+On macOS 26 there's a catch: Tahoe renders **"S-variant" identifiers**
+(`com.apple.coregraphics.ArrowS`, `IBeamS` — found in the dyld shared cache
+strings) rather than the long-documented legacy names. Register only the legacy
+names and you get a success return code with no visible change. gauntlet
 registers both.
 
-Registrations live in the WindowServer session — logout fully resets
-everything, so you can't get stuck.
+Registrations live in the WindowServer session, so logging out fully resets
+everything — you can't get stuck with a broken cursor.
 
 ## Usage
 
@@ -25,20 +27,20 @@ everything, so you can't get stuck.
 clang -fobjc-arc -fmodules -o gauntlet gauntlet.m \
   -framework AppKit -framework ApplicationServices
 
-./gauntlet use <name>    # apply capes/<name> and make it current
-./gauntlet use           # re-apply current cape (login agent calls this)
-./gauntlet capes         # list installed capes (* = current)
-./gauntlet apply <dir>   # apply an arbitrary cape directory
-./gauntlet reset         # restore stock cursors, clear current cape
+./gauntlet use <name>    # apply gloves/<name> and make it current
+./gauntlet use           # re-apply current glove (login agent calls this)
+./gauntlet gloves        # list installed gloves (* = current)
+./gauntlet apply <dir>   # apply an arbitrary glove directory
+./gauntlet reset         # restore stock cursors, clear current glove
 ./gauntlet list          # supported cursor slot names
 ```
 
-## Making a cape
+## Making a glove
 
-A cape is a directory in `capes/`:
+A glove (a set of cursors) is a directory in `gloves/`:
 
 ```
-capes/mycape/
+gloves/myglove/
   arrow.png        # required per slot you want: 1x image (32×32 is typical)
   arrow@2x.png     # optional retina rep (double pixels)
   pointing.png
@@ -47,28 +49,28 @@ capes/mycape/
 
 Slot names come from `./gauntlet list` (arrow, ibeam, pointing, link,
 forbidden, copydrag, …). Only the slots you provide are replaced; everything
-else stays stock. Then `./gauntlet use mycape`. Swapping between capes is one
-command; each `use` starts from the stock set, so capes never bleed into each
+else stays stock. Then `./gauntlet use myglove`. Swapping between gloves is one
+command; each `use` starts from the stock set, so gloves never bleed into each
 other.
 
 Tip: leave `ibeam` alone unless your art is thin — text selection with a chunky
 cursor is misery.
 
-## The WoW cape
+## The WoW glove
 
-Blizzard's retail cursor art is not redistributable, so `capes/wow/` is not in
+Blizzard's retail cursor art is not redistributable, so `gloves/wow/` is not in
 the repo. Build it locally:
 
 ```sh
-./scripts/make-wow-cape.sh   # needs python3; fetches NeticSoul/retail-cursor-pack
+./scripts/make-wow-glove.sh  # needs python3; fetches NeticSoul/retail-cursor-pack
 ./gauntlet use wow
 ```
 
-The script downloads the art pack's MPQ archive, decrypts/extracts it
-(`mpqx.py` — mpyq plus the MPQ block cipher), decodes the BLP2 cursor
-textures (`blp2png.py` — Pillow mishandles palettized 1-bit alpha), and maps
-them onto cursor slots: gauntlet pointer, red "unable" gauntlet on forbidden,
-loot bag while dragging. Personal use only.
+The script downloads the art pack's MPQ archive, decrypts and extracts it
+(`mpqx.py` — mpyq plus the MPQ block cipher), decodes the BLP2 cursor textures
+(`blp2png.py` — Pillow mishandles palettized 1-bit alpha), and maps them onto
+cursor slots: gauntlet pointer, red "unable" gauntlet on forbidden, loot bag
+while dragging. Personal use only.
 
 ## Persist across reboots
 
@@ -94,12 +96,12 @@ Install a LaunchAgent that runs `gauntlet use` at login
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.you.gauntlet.plist
 ```
 
-## Credits
+## Notes and credits
 
-- API surface distilled from [Mousecape](https://github.com/alexzielenski/Mousecape)
-  by Alex Zielenski (CGSInternal headers reversed by Alex Zielenski and Joe Ranieri).
+- These are private macOS APIs. They can change or break in any OS release;
+  the failure mode is a cursor that ignores you until you log out.
+- The private cursor API signatures were originally reverse-engineered by
+  Joe Ranieri and Alex Zielenski.
 - WoW cursor art © Blizzard Entertainment, packaged by
   [NeticSoul/retail-cursor-pack](https://github.com/NeticSoul/retail-cursor-pack).
   Not included in this repo; fetched locally for personal use.
-- Uses private macOS APIs. They can break in any release; worst case is a
-  cursor that ignores you until logout.
