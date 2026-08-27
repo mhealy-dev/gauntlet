@@ -86,22 +86,6 @@ draw their own — browsers honouring CSS `cursor`, image and video editors,
 games, anything using a fully custom NSCursor image — bypass it entirely, and
 no tool of this kind can reach them.
 
-## The WoW glove
-
-Blizzard's retail cursor art is not redistributable, so `gloves/wow/` is not in
-the repo. Build it locally:
-
-```sh
-./scripts/make-wow-glove.sh  # needs python3; fetches NeticSoul/retail-cursor-pack
-./gauntlet use wow
-```
-
-The script downloads the art pack's MPQ archive, decrypts and extracts it
-(`mpqx.py` — mpyq plus the MPQ block cipher), decodes the BLP2 cursor textures
-(`blp2png.py` — Pillow mishandles palettized 1-bit alpha), and maps them onto
-cursor slots: gauntlet pointer, red "unable" gauntlet on forbidden, loot bag
-while dragging. Personal use only.
-
 ## Persist across reboots
 
 Install a LaunchAgent that runs `gauntlet use` at login
