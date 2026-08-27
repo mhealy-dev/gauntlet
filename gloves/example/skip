@@ -1,0 +1,12 @@
+# Slots left stock, even though default.png would otherwise cover them.
+
+# Direction indicators — their whole job is showing which way an edge will
+# move, which a single static pointer destroys.
+@resize
+
+# Loading indicators — animated, and a spinner is real feedback that
+# something is happening.
+wait
+busy
+counting-down
+counting-updown

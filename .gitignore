@@ -1,14 +1,13 @@
 # compiled binary
 /gauntlet
 
-# current-glove selection (machine state)
-gloves/.current
+# gloves are personal: everything you make stays local, only the bundled
+# example ships. (Covers .current, the machine's selected-glove marker.)
+gloves/*
+!gloves/example/
 
-# Blizzard art — not redistributable (rebuild with scripts/make-wow-glove.sh).
-# The wow gloves' config (skip, hotspots.json) is ours and stays tracked;
-# only the artwork is excluded.
-gloves/wow/
-gloves/wow-solid/*.png
+# local-only tooling
+local/
 
 # generated cursor reference — Apple's artwork, rebuild with
 # scripts/dump-cursors.sh. CURSORS.md carries the reference itself.

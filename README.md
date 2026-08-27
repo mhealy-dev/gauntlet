@@ -79,14 +79,8 @@ counting-updown
 cursor.7          # bare core cursors work too
 ```
 
-The bundled `wow-solid` glove ships with exactly that skip file. Its artwork
-isn't committed — build it first, then apply:
-
-```sh
-./scripts/make-wow-glove.sh   # needs python3; writes the bundled gloves' art
-./gauntlet use wow-solid      # single pointer
-./gauntlet use wow            # or the contextual version
-```
+`gloves/example/` is exactly this: one `default.png`, that skip file, nothing
+else. `./gauntlet use example` to see it.
 
 **Limit:** this covers cursors macOS draws from its own registry. Apps that
 draw their own — browsers honouring CSS `cursor`, image and video editors,
