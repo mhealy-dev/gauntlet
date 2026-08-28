@@ -93,11 +93,12 @@ static const CursorEntry kCursors[] = {
     {NULL, NULL, NULL}
 };
 
-// Core cursors are com.apple.cursor.0 ... com.apple.cursor.kMaxCoreCursor.
-// The WindowServer registry is populated lazily (an identifier shows up only
-// once something registers or uses it), so a glove that wants to cover
-// *everything* has to register across the whole range up front.
-static const int kMaxCoreCursor = 44;
+// Core cursors are com.apple.cursor.0 ... com.apple.cursor.44, but 44 has no
+// stock artwork: nothing restores that slot short of a logout (not even
+// CoreCursorUnregisterAll), and stamping a glove image onto it broke the
+// window-edge resize pointer on Tahoe. Sweep and reset stop at 43 —
+// see CURSORS.md.
+static const int kMaxCoreCursor = 43;
 
 // Resize and window-drag cursors: pane splitters (17-19, 21-23) and window
 // edges/corners (26-39). Their whole job is showing *which way* something will
@@ -357,7 +358,7 @@ static int resetCursors(BOOL announce) {
 
     // Drop all com.apple.cursor.N registrations and reload defaults.
     if (CoreCursorUnregisterAll(cid) == kCGErrorSuccess) {
-        for (int x = 0; x < 45; x++) CoreCursorSet(cid, x);
+        for (int x = 0; x <= kMaxCoreCursor; x++) CoreCursorSet(cid, x);
         if (announce) printf("cursors restored (a logout fully resets everything)\n");
         return 0;
     }
