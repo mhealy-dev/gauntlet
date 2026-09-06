@@ -1,7 +1,7 @@
 # gauntlet
 
 Tiny system-wide custom cursor tool for macOS, including **macOS 26 Tahoe**.
-One ~350-line Objective-C file — no GUI, no privileged helper, no daemon.
+One ~500-line Objective-C file — no GUI, no privileged helper, no daemon.
 Compiles with Command Line Tools alone.
 
 Named for its original mission: a World of Warcraft gauntlet pointer.
@@ -45,6 +45,7 @@ gloves/myglove/
   arrow@2x.png     # optional retina rep (double pixels)
   pointing.png
   default.png      # optional: fallback for every slot with no PNG of its own
+  @resize.png      # optional: one image for all 20 direction indicators
   skip             # optional: slot names to leave stock, one per line
   hotspots.json    # optional: {"arrow": {"x": 4, "y": 2}} in 1x pixel coords
 ```
@@ -56,7 +57,10 @@ replaced; everything else stays stock. Then `./gauntlet use myglove`. Each
 `use` starts by restoring the stock set, so gloves never bleed into each other.
 
 Tip: leave `ibeam` alone unless your art is thin — text selection with a chunky
-cursor is misery.
+cursor is misery. But leave it alone *deliberately*: on macOS 26 nothing can
+restore it, so a `default.png` that reaches it owns your text cursor until you
+log out. Name it in `skip`, or give it art you actually want — see the note in
+[CURSORS.md](CURSORS.md).
 
 ### One pointer for everything
 
@@ -68,6 +72,10 @@ Use `skip` to carve out exceptions — two are worth keeping stock. Loading
 cursors are animated, and a spinner is genuine feedback that something is
 happening. Resize cursors exist to show *which direction* an edge will move,
 which one static pointer destroys; `@resize` covers all 20 of them in a line.
+
+If you'd rather give the direction indicators their own art than skip them,
+`@resize.png` covers the same 20 in one image — a slot's own PNG still wins,
+and `default.png` picks up whatever neither named.
 
 ```
 # gloves/myglove/skip

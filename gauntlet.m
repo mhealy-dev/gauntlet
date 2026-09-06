@@ -110,6 +110,18 @@ static const int kResizeCursors[] = {
 };
 static const int kResizeCursorCount = sizeof(kResizeCursors) / sizeof(kResizeCursors[0]);
 
+// Is this identifier one of them? Lets "@resize.png" cover the whole group the
+// way "@resize" does in a skip file.
+static BOOL identIsResize(const char *identifier) {
+    static const char prefix[] = "com.apple.cursor.";
+    size_t n = sizeof(prefix) - 1;
+    if (strncmp(identifier, prefix, n) != 0) return NO;
+    int index = atoi(identifier + n);
+    for (int i = 0; i < kResizeCursorCount; i++)
+        if (kResizeCursors[i] == index) return YES;
+    return NO;
+}
+
 #pragma mark - Image loading
 
 // Loads a PNG as a CGImage tagged sRGB (WindowServer expects sRGB data).
@@ -250,6 +262,19 @@ static int applyDirectory(NSString *dir) {
         defaultHotspot = CGPointMake([hs[@"x"] doubleValue], [hs[@"y"] doubleValue]);
     }
 
+    // Optional @resize.png: one image for all twenty direction indicators, the
+    // art-side twin of the skip file's @resize group. Beaten by a slot's own
+    // PNG, beats default.png.
+    NSArray *resizeImages = loadSlotImages(dir, @"@resize");
+    CGSize resizeSize = CGSizeZero;
+    CGPoint resizeHotspot = CGPointZero;
+    if (resizeImages) {
+        CGImageRef base = (__bridge CGImageRef)resizeImages[0];
+        resizeSize = CGSizeMake(CGImageGetWidth(base), CGImageGetHeight(base));
+        NSDictionary *hs = hotspots[@"@resize"];
+        resizeHotspot = CGPointMake([hs[@"x"] doubleValue], [hs[@"y"] doubleValue]);
+    }
+
     NSSet *skip = loadSkipList(dir);
     NSMutableSet *handled = [NSMutableSet set];
     int applied = 0, failed = 0, skipped = 0;
@@ -274,6 +299,10 @@ static int applyDirectory(NSString *dir) {
             size = CGSizeMake(CGImageGetWidth(base), CGImageGetHeight(base));
             NSDictionary *hs = hotspots[name];
             hotspot = CGPointMake([hs[@"x"] doubleValue], [hs[@"y"] doubleValue]);
+        } else if (resizeImages && identIsResize(kCursors[i].identifier)) {
+            images = resizeImages;
+            size = resizeSize;
+            hotspot = resizeHotspot;
         } else if (defaultImages) {
             images = defaultImages;
             size = defaultSize;
@@ -302,9 +331,10 @@ static int applyDirectory(NSString *dir) {
         }
     }
 
-    // Sweep the rest of the core cursor range with the default image.
-    if (defaultImages) {
-        int swept = 0;
+    // Core cursors with no friendly name: the @resize group first, then
+    // default.png over anything still bare.
+    {
+        int swept = 0, grouped = 0;
         for (int n = 0; n <= kMaxCoreCursor; n++) {
             NSString *ident = [NSString stringWithFormat:@"com.apple.cursor.%d", n];
             if ([handled containsObject:ident]) continue;
@@ -312,11 +342,19 @@ static int applyDirectory(NSString *dir) {
                 skipped++;
                 continue;
             }
-            if (registerCursor(ident.UTF8String, defaultImages, defaultSize, defaultHotspot))
-                swept++;
+
+            BOOL group = resizeImages && identIsResize(ident.UTF8String);
+            NSArray *images = group ? resizeImages : defaultImages;
+            if (!images) continue;
+            if (registerCursor(ident.UTF8String, images,
+                               group ? resizeSize : defaultSize,
+                               group ? resizeHotspot : defaultHotspot)) {
+                if (group) grouped++; else swept++;
+            }
         }
-        if (swept) printf("applied default      -> %d further core cursor(s)\n", swept);
-        applied += swept;
+        if (grouped) printf("applied @resize      -> %d direction indicator(s)\n", grouped);
+        if (swept)   printf("applied default      -> %d further core cursor(s)\n", swept);
+        applied += grouped + swept;
     }
 
     if (applied == 0 && failed == 0) {
@@ -334,7 +372,12 @@ static int applyDirectory(NSString *dir) {
 #pragma mark - Reset
 
 // Restore a coregraphics.* cursor from AppKit's pristine NSCursor images.
-static void restoreFromNSCursor(const char *identifier, NSCursor *cursor) {
+//
+// Returns NO when AppKit has no bitmap to give — on macOS 26, +arrowCursor and
+// +IBeamCursor are nil (every other NSCursor still has reps), so there is no
+// stock image to put back and whatever a glove stamped there stays until
+// logout. Say so rather than reporting a reset that didn't happen.
+static BOOL restoreFromNSCursor(const char *identifier, NSCursor *cursor) {
     NSImage *image = cursor.image;
     NSMutableArray *images = [NSMutableArray array];
     for (NSImageRep *rep in image.representations) {
@@ -342,8 +385,9 @@ static void restoreFromNSCursor(const char *identifier, NSCursor *cursor) {
         CGImageRef cg = [rep CGImageForProposedRect:&proposed context:nil hints:nil];
         if (cg) [images addObject:(__bridge id)cg];
     }
-    if (!images.count) return;
+    if (!images.count) return NO;
     registerCursor(identifier, images, image.size, cursor.hotSpot);
+    return YES;
 }
 
 static int resetCursors(BOOL announce) {
@@ -351,10 +395,15 @@ static int resetCursors(BOOL announce) {
 
     // Re-register stock images over anything we replaced globally
     // (legacy and Tahoe S-variant identifiers).
-    restoreFromNSCursor("com.apple.coregraphics.Arrow",  [NSCursor arrowCursor]);
-    restoreFromNSCursor("com.apple.coregraphics.ArrowS", [NSCursor arrowCursor]);
-    restoreFromNSCursor("com.apple.coregraphics.IBeam",  [NSCursor IBeamCursor]);
-    restoreFromNSCursor("com.apple.coregraphics.IBeamS", [NSCursor IBeamCursor]);
+    int stuck = 0;
+    stuck += !restoreFromNSCursor("com.apple.coregraphics.Arrow",  [NSCursor arrowCursor]);
+    stuck += !restoreFromNSCursor("com.apple.coregraphics.ArrowS", [NSCursor arrowCursor]);
+    stuck += !restoreFromNSCursor("com.apple.coregraphics.IBeam",  [NSCursor IBeamCursor]);
+    stuck += !restoreFromNSCursor("com.apple.coregraphics.IBeamS", [NSCursor IBeamCursor]);
+    if (stuck)
+        fprintf(stderr, "gauntlet: AppKit has no stock image for %d of the pointer/text "
+                        "cursors on this macOS — if one of them is wrong, log out to "
+                        "clear it\n", stuck);
 
     // Drop all com.apple.cursor.N registrations and reload defaults.
     if (CoreCursorUnregisterAll(cid) == kCGErrorSuccess) {
