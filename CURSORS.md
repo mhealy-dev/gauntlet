@@ -2,8 +2,8 @@
 
 Every cursor slot gauntlet can replace, as observed on macOS 26.5 (Tahoe).
 Use the **slot** name for a per-cursor PNG (`gloves/myglove/arrow.png`) or in a
-`skip` file. Slots without a name are still covered by `default.png`, and can
-be skipped by their `cursor.N` form.
+`skip` file. Slots without a name are still covered by `@resize.png` and
+`default.png`, and can be skipped by their `cursor.N` form.
 
 Regenerate the underlying data on your own machine with
 `./scripts/dump-cursors.sh` — it writes each stock cursor to a PNG plus a
@@ -93,14 +93,25 @@ Notes:
 - **0, 1 and 6 have no image** on Tahoe and can be ignored.
 - **44 has no stock image.** Nothing restores it, so anything registered there
   persists until logout. gauntlet's sweep stops at 43 for that reason.
+- **`arrow` and `ibeam` can't be restored on macOS 26.** `reset` rebuilds the
+  `coregraphics.*` cursors from AppKit, but `+[NSCursor arrowCursor]` and
+  `+[NSCursor IBeamCursor]` are both nil there — every other NSCursor still
+  hands back real representations, those two don't. So `coregraphics.Arrow`,
+  `ArrowS`, `IBeam`, `IBeamS` and `IBeamXOR` behave like 44: once a glove
+  covers one, its art stays until logout. `reset` says so rather than claiming
+  a restore that didn't happen. The trap is `default.png`, which covers
+  `ibeam` unless the skip file names it — try a glove once and its pointer is
+  your text cursor for the rest of the session. A glove that means to own
+  those slots should give them art of their own.
 - Names come from observing the artwork, not from Apple. The identifiers are
   what matter; treat the descriptions as a guide.
 
 ## Groups
 
-Skip files accept `@resize`, which expands to every `@resize` row above
-(17-19, 21-23, 26-39). Direction-indicating cursors carry information a single
-static pointer destroys, so most full-coverage gloves want it:
+`@resize` expands to every `@resize` row above (17-19, 21-23, 26-39), as a name
+in a skip file or as art (`@resize.png`, and `@resize@2x.png`) covering all
+twenty at once. Direction-indicating cursors carry information a single static
+pointer destroys, so most full-coverage gloves skip them:
 
 ```
 # gloves/myglove/skip
