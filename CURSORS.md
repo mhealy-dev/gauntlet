@@ -38,6 +38,7 @@ target them individually.
 | `resize-we` | `cursor.19` | Pane splitter, left-right |
 | `resize-ns` | `cursor.23` | Pane splitter, up-down |
 | `zoomin` | `cursor.42` | Zoom in |
+| `zoomout` | `cursor.43` | Zoom out |
 
 ## All core cursors
 
