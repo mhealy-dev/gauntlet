@@ -90,6 +90,7 @@ static const CursorEntry kCursors[] = {
     {"resize-we", "com.apple.cursor.19", NULL},
     {"resize-ns", "com.apple.cursor.23", NULL},
     {"zoomin", "com.apple.cursor.42", NULL},
+    {"zoomout", "com.apple.cursor.43", NULL},
     {NULL, NULL, NULL}
 };
 
